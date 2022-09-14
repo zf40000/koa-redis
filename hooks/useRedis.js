@@ -4,11 +4,18 @@ import HTTP from 'http'
 import md5 from 'md5-node'
 
 const key = '36c75e3f460371bc86b193a7d94877b6'
+//各个医院队对应的消费api地址,php发起的请求中需要加上医院key
+const CONSUM_API = {
+  dev:'/lis_server/apiLis.php',//开发环境
+  xj:'/lis_xj/apiLis.php',//薛家
+  sj:'',//三井
+}
 
+// 存在多个医院多个地址的情况
 const POST_OPTIONS = {
   host: '127.0.0.1',
   port: 80,
-  path: '/lis_server/apiLis.php',
+  path: '/lis_server/apiLis.php',//改为动态获得
   method: 'POST',
   headers: '',
 }
@@ -20,26 +27,27 @@ const msgKey = 'msgKey'
 // 备份队列key
 const msgKeyBak = 'msgKeyBak'
 
-// 模拟消费
-// const doConsum = (client, task) => {
-//   return new Promise((resolve, reject) => {
-//     setTimeout(async () => {
-//       //模拟消费失败,期望:备份队列的消息保留,
-//       // return reject('消费失败'+task);
-
-//       // 消费成功,真实的消费是向php发送api请求.
-//       console.log('消费成功:', task)
-//       await client.lRem(msgKeyBak, 1, task)
-//       console.log(
-//         '从备份队列中删除消息,删除后备份队列:',
-//         await client.lRange(msgKeyBak, 0, -1)
-//       )
-//       return resolve('ok')
-//     }, 10)
-//   })
-// }
-
+// 模拟消费,2s消费一次
 const doConsum = (client, task) => {
+  return new Promise((resolve, reject) => {
+    setTimeout(async () => {
+      //模拟消费失败,期望:备份队列的消息保留,
+      // return reject('消费失败'+task);
+
+      // 消费成功,真实的消费是向php发送api请求.
+      console.log('消费成功:', task)
+      await client.lRem(msgKeyBak, 1, task)
+      console.log(
+        '从备份队列中删除消息,删除后备份队列:',
+        await client.lRange(msgKeyBak, 0, -1)
+      )
+      return resolve('ok')
+    }, 2000)
+  })
+}
+
+//真实消费,请求php接口进行消费,
+const doConsum1 = (client, task) => {
   const tmp = Date.parse(new Date()).toString().substring(0, 10)
   const POST_DATA = {
     method: 'lis.async.updateTask',
@@ -110,8 +118,6 @@ const retryConsum = async (client) => {
   return true
 }
 
-// 接受php的请求
-
 // 启动消费服务
 const startConsum = async (client) => {
   const key = msgKey
@@ -163,8 +169,8 @@ const startConsum = async (client) => {
   await startConsum(client)
 }
 
-// 生产消息
-// data : php 传过来的数据
+// 生产消息 
+// saveLisData接口中调用,用来处理php的请求
 const produceMsg = async (client, data) => {
   //为每个元素生成uid
   const _data = data.map((item) => {
@@ -256,6 +262,7 @@ function createToken(param) {
   let token = md5(stringSignTemp).toString()
   return token
 }
+
 export default async function (newClient = false) {
   let client
   if (newClient === true) {
